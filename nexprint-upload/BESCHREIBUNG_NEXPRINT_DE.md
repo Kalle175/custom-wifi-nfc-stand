@@ -1,33 +1,38 @@
-# Custom WiFi NFC Stand – Personalisierbarer Gäste-WLAN-Aufsteller
+# Custom WiFi NFC Stand – WLAN-Aufsteller mit QR-Code und NFC
 
-**Schlichter dreifarbiger WLAN-Aufsteller mit QR-Code, Klarschrift-Zugangsdaten und verstecktem NFC-Tag.**
+Schlichter, personalisierbarer WLAN-Aufsteller mit QR-Code, sichtbaren Zugangsdaten und einem optionalen unsichtbar eingelassenen NFC-Sticker.
 
-Der Aufsteller besteht aus einer nach hinten geneigten Tafel mit kompaktem Standfuß. Auf der Vorderseite befinden sich ein scannbarer WLAN-QR-Code, WLAN-Name und Passwort, darunter ein dezenter NFC-Scanrahmen mit Smartphone-Symbol. Ein 25-mm-NFC-Sticker kann beim Drucken in eine unsichtbare Tasche eingelegt werden.
+**Online-Konfigurator:** https://kalle175.github.io/custom-wifi-nfc-stand/
 
-**Wichtig:** Diese Datei ist nur ein **Demo-Modell mit fiktivem WLAN** (`GASTNETZ-DEMO` / `Demo1234567`). Bitte erst den persönlichen Aufsteller mit dem kostenlosen Konfigurator erstellen.
+## Ausstattung
 
-🔗 **Zum Konfigurator:** [HIER DIE EIGENE WEBSEITEN-URL EINFÜGEN]
+- Kompakter Standfuß mit leicht nach hinten geneigter Fronttafel
+- WLAN-QR-Code zum schnellen Verbinden mit einem Gastnetz
+- WLAN-Name und Passwort als gut lesbare Beschriftung
+- Dezenter NFC-Scanbereich mit Smartphone-Symbol
+- Integrierte 26-mm-Tasche für 25-mm-NFC-Tags
+- Browserbasierte Personalisierung mit Sprachauswahl (DE, EN, FR, ES)
 
-### Konfigurator
+Im Konfigurator lassen sich individuelle 3MF- und STL-Druckdateien sowie QR- und NFC-Daten erstellen. Alle Eingaben werden lokal im Browser verarbeitet; eine Anmeldung ist nicht erforderlich.
 
-- SSID, Passwort, Sprache (DE/EN/FR/ES) und WLAN-Sicherheit einstellen.
-- Funktionierenden QR-Code lokal erzeugen.
-- Personalisiertes dreifarbiges 3MF inklusive separater STL-Teile herunterladen.
-- WLAN-NFC-Daten und eine ausführliche Druckanleitung erhalten.
-- Keine Registrierung, kein Hochladen des WLAN-Passworts auf einen Server.
+## Druckhinweise
 
-### Drucken
+- 0,4-mm-Düse, 0,20-mm-Schichthöhe als Ausgangspunkt
+- Fronttafel flach auf das Druckbett, Standfuß separat
+- Drei Farben: Weiß / Schwarz / Blau
+- Stützstrukturen in der vorgesehenen Druckausrichtung deaktivieren
+- Materialeinstellungen entsprechend dem verwendeten Filament wählen
 
-0,4-mm-Düse · 0,20-mm-Schichten · Tafel flach · Standfuß separat · 3 Farben (Weiß/Schwarz/Blau). **Stützen ausschalten.** Die interne NFC-Tasche (Ø 26 mm) ist die einzige gezielte Brücke.
+**Optionaler NFC-Einleger:** Nach Z = 3,2 mm eine Druckpause einfügen, den NFC-Sticker in die offene Tasche legen und den Druck fortsetzen. Den Pausenzeitpunkt unbedingt in der Schichtvorschau kontrollieren. Der 26-mm-Hohlraum wird anschließend überbrückt.
 
-**Optionaler NFC-Tag:** Während des Drucks nach Z=3,2 mm eine Pause setzen, den 25-mm-Sticker einlegen und weiterdrucken. Die Druckpause muss in der Schichtvorschau kontrolliert werden; gewöhnliche QR-WLAN-Tags verbinden iPhones nicht automatisch.
+Der NFC-Datensatz stellt auf iPhones keine automatische WLAN-Verbindung her. Dafür ist der QR-Code vorgesehen. NFC-Unterstützung auf Android ist geräteabhängig.
 
-**Hinweis zum Handy-Druck:** Die mobile Cloud-Slicing-Funktion kann unerwartete Stützstrukturen hinzufügen. Für sichere Ergebnisse bitte die 3MF im PC-Slicer prüfen und ein passendes Druckprofil verwenden.
+## Demo und Lizenz
 
-Material: PLA oder PETG; bei Mehrfarbendruck keine unterschiedlichen Materialarten mischen. Temperaturen nach Herstellerprofil.
+Das bereitgestellte Beispielmodell enthält ausschließlich fiktive WLAN-Daten (`GASTNETZ-DEMO`, `Demo1234567`). Persönliche WLAN-Daten können über den Konfigurator eingetragen werden.
 
-Das Modell kann auch ohne NFC-Sticker als normaler WLAN-QR-Aufsteller gedruckt werden.
+**Modell-Lizenz:** CC BY-NC 4.0 – nichtkommerzielle Nutzung mit Namensnennung. Verkauf von Modellen oder Drucken nur nach gesonderter Erlaubnis.
 
-**Lizenz:** Modell CC BY-NC 4.0 – privater, nicht-kommerzieller Druck erlaubt; Verkauf nicht gestattet. Urheber: Kalle175. https://creativecommons.org/licenses/by-nc/4.0/deed.de
+**Urheber:** Kalle175
 
-**Tags:** guest wifi, WLAN, QR code, NFC, desktop stand, multicolor, customizable, 3D printing, Elegoo
+**Schlagwörter:** WLAN, Gäste-WLAN, WiFi, QR-Code, NFC, 3D-Druck, Aufsteller, Multicolor, personalisierbar

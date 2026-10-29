@@ -1,4 +1,4 @@
-/* Custom WiFi NFC Stand — 100% browser-local file generation */
+/* Custom WiFi NFC Stand — client-side model and QR generation */
 'use strict';
 const $ = id => document.getElementById(id);
 const captions = {de:['GÄSTE-WLAN','NETZWERK','PASSWORT'],en:['GUEST WI-FI','NETWORK','PASSWORD'],fr:['WI-FI INVITÉS','RÉSEAU','MOT DE PASSE'],es:['WI-FI INVITADOS','RED','CONTRASEÑA']};
@@ -31,8 +31,8 @@ $('togglePW').addEventListener('click',()=>{$('password').type=$('password').typ
 ['ssid','password','security','language','hidden'].forEach(id=>$(id).addEventListener('input',update));
 function qrcodePNG(c){const m=qrMatrix(c),n=m.length,box=12;const canvas=document.createElement('canvas');canvas.width=canvas.height=n*box;const ctx=canvas.getContext('2d',{willReadFrequently:false});ctx.fillStyle='#ffffff';ctx.fillRect(0,0,n*box,n*box);ctx.fillStyle='#000000';for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(m[y][x])ctx.fillRect(x*box,y*box,box,box);return new Promise(resolve=>canvas.toBlob(resolve,'image/png'))}
 function downloadBlob(blob,name){const link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download=name;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(link.href),25000)}
-$('saveQR').addEventListener('click',async()=>{try{let c=configuration();validate(c);downloadBlob(await qrcodePNG(c),'WLAN_QR_Code.png');$('status').textContent='QR-Code als PNG gespeichert.'}catch(e){showError(e)}});
-$('copyNFC').addEventListener('click',async()=>{try{let c=configuration();validate(c);await navigator.clipboard.writeText(ntagCommands(c));$('status').textContent='NTAG215-Schreibbefehle kopiert. In NFC Tools bei Fortgeschrittene NFC-Kommandos einfügen.'}catch(e){$('status').textContent='Kopieren nicht erlaubt: Nutze die .txt-Datei im heruntergeladenen ZIP.'}});
+$('saveQR').addEventListener('click',async()=>{try{let c=configuration();validate(c);downloadBlob(await qrcodePNG(c),'WLAN_QR_Code.png');$('status').textContent='QR-Code heruntergeladen.'}catch(e){showError(e)}});
+$('copyNFC').addEventListener('click',async()=>{try{let c=configuration();validate(c);await navigator.clipboard.writeText(ntagCommands(c));$('status').textContent='NTAG215-Schreibbefehle kopiert. In NFC Tools bei Fortgeschrittene NFC-Kommandos einfügen.'}catch(e){$('status').textContent='Kopieren nicht erlaubt: Die Befehle stehen auch als Textdatei im Druckpaket.'}});
 function showError(e){$('error').textContent=e.message||String(e);$('error').hidden=false;$('status').textContent=''}
 // binary STL -> unique vertices and triangles. Vertex welding only on predefined closed meshes.
 function readSTL64(b64){let s=atob(b64),buffer=new ArrayBuffer(s.length),u=new Uint8Array(buffer);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);let dv=new DataView(buffer),count=dv.getUint32(80,true),mesh={v:[],f:[]},lookup=new Map();for(let k=0;k<count;k++){let off=84+k*50,tri=[];for(let p=0;p<3;p++){let x=dv.getFloat32(off+12+p*12,true),y=dv.getFloat32(off+16+p*12,true),z=dv.getFloat32(off+20+p*12,true),key=[x,y,z].map(a=>a.toFixed(4)).join(',');let j=lookup.get(key);if(j===undefined){j=mesh.v.length;lookup.set(key,j);mesh.v.push([x,y,z])}tri.push(j)}mesh.f.push(tri)}return mesh}
@@ -62,11 +62,40 @@ function u16(n){return Uint8Array.from([n>>8,n&255])}
 function ndefWSC(c){let isOpen=c.security==='nopass';let cred=concat(tlv(0x1026,Uint8Array.from([1])),tlv(0x1045,bytes(c.ssid)),tlv(0x1003,u16(isOpen?1:0x20)),tlv(0x100f,u16(isOpen?1:8)),tlv(0x1027,isOpen?new Uint8Array():bytes(c.password)),tlv(0x1020,Uint8Array.from([255,255,255,255,255,255])));const payload=tlv(0x100e,cred),typ=bytes('application/vnd.wfa.wsc');if(payload.length<256)return concat(Uint8Array.from([0xD2,typ.length,payload.length]),typ,payload);return concat(Uint8Array.from([0xC2,typ.length,0,0,payload.length>>8,payload.length&255]),typ,payload)}
 // Type-2 NFC NDEF TLV in pages 04 onwards. NTAG215: 504 user bytes.
 function ntagCommands(c){const ndef=ndefWSC(c);const len=ndef.length;let packet= len<=254?concat(Uint8Array.from([0x03,len]),ndef,Uint8Array.from([0xFE])):concat(Uint8Array.from([0x03,0xFF,(len>>8)&255,len&255]),ndef,Uint8Array.from([0xFE]));if(packet.length>504)throw Error('NFC-Daten passen nicht auf NTAG215.');let cmds=[];for(let i=0;i<packet.length;i+=4){const v=Array.from(packet.slice(i,i+4));while(v.length<4)v.push(0);cmds.push('A2:'+(4+i/4).toString(16).padStart(2,'0').toUpperCase()+':'+v.map(n=>n.toString(16).padStart(2,'0').toUpperCase()).join(''))}return cmds.join(', ')}
-const howto = c => `CUSTOM WIFI NFC STAND · PERSOENLICHER DRUCK\n\nSSID: ${c.ssid}\nPasswort: ${c.security==='nopass'?'(Offenes WLAN)':c.password}\n\nFERTIGUNG\n- 3MF im ElegooSlicer / OrcaSlicer öffnen; Farben zuweisen: Weiß Grundplatte und Fuss, Schwarz QR+Schrift, Blau NFC-Rahmen.\n- Alle drei Farben im gleichen Material drucken (z.B. PETG oder PLA).\n- Tafel liegt flach. Standfuss als separates Objekt ohne Supports.\n- Stützstrukturen standardmäßig AUS. Ist für diese Ausrichtung konzipiert, nicht im Handy-Cloud-Slicer blind starten.\n- 0,2 mm Layerhöhe, 3 Perimeter, 5 Decklagen, 15% Gyroid; Temperaturanpassung an Filamenthersteller.\n- NFC-Tag: 25-mm-Sticker, Tasche 26 mm / Tiefe 0,8 mm, Höhe Z=2,4–3,2 mm.\n- Bei einer 0,2-mm-Schichthöhe PAUSE NACH Z=3,2 mm (vor nächster Schicht) im Slicer setzen.\n- Z-Schicht in Vorschau bestätigen: Loch muss vollständig offen sein.\n- NFC-Sticker einlegen, darf nicht überstehen, weiterdrucken. Achtung heiße Düse/Bett und Hitzeempfindlichkeit von NFC-Stickern.\n- Überbrückung 26mm; bei PETG/ABS ist Bridging anspruchsvoll.\n- Lochpausen erst an einem kleinen Testdruck verifizieren.\n\nNFC\n- Die .ndef-Datei enthält einen WLAN-WSC-NFC-Record; sie ist keine gewöhnliche URL.\n- Zum Beschreiben mit iOS: NFC Tools -> Fortgeschrittene NFC-Kommandos -> Schreibbefehle aus NFC_NTAG215_Schreibbefehle.txt einfuegen (oder ueber normalen WLAN-Datensatz manuell schreiben).\n- Der rohe .ndef-Export wird nur von Anwendungen unterstützt, die das Importieren von NDEF-Nachrichten erlauben.\n- iPhones verbinden sich durch ein gewöhnliches WLAN-NFC-Tag NICHT automatisch. QR-Code mit Kamera scannen.\n\nSICHERHEIT: DIESER ORDNER ENTHAELT EUER WLAN-PASSWORT. NICHT IN NEXPRINT, GITHUB ODER DIE CLOUD HOCHLADEN.\n`;
+const howto = c => `CUSTOM WIFI NFC STAND — DRUCKANLEITUNG
+
+MODELL
+- Tafel flach mit der beschrifteten Seite nach oben ausrichten.
+- Standfuß separat drucken.
+- Druckfarben: Weiß (Tafel/Fuß), Schwarz (QR/Schrift), Blau (NFC-Markierung).
+- Für Mehrfarbendruck einen einheitlichen Materialtyp verwenden.
+- Ausgangsprofil: 0,20 mm Schichthöhe, 3 Wände, 5 Deckschichten, 15 % Gyroid.
+- Materialtemperatur und Lüftung nach Filamenthersteller einstellen.
+- Stützen bei flacher Ausrichtung deaktivieren; Slicer-Vorschau prüfen.
+
+NFC (OPTIONAL)
+- Für NFC-Sticker mit 25 mm Durchmesser; Einlegetasche Ø 26 mm.
+- Pause nach Abschluss von Z = 3,2 mm setzen (bei 0,20 mm gewöhnlich nach Schicht 16).
+- Den Pausenzeitpunkt anhand der Schichtvorschau verifizieren.
+- Sticker flach einsetzen, ohne dass er über den Rand der Tasche hinausragt.
+- Die darauffolgende Brücke misst 26 mm; materialabhängige Bridging-Einstellungen prüfen.
+- Wärme kann NFC-Sticker beschädigen. Heiße Druckerbauteile nicht berühren.
+
+WLAN UND NFC
+- QR-Code: WLAN-Verbindungsdaten für kompatible Smartphone-Kameras.
+- NFC_WLAN_WSC.ndef: NDEF-Nachricht im WLAN-WSC-Format.
+- NFC_NTAG215_Schreibbefehle.txt: Schreibbefehle für kompatible NFC-Tools.
+- Ein WLAN-NFC-Tag verbindet iPhones nicht automatisch mit dem WLAN.
+
+DATENSCHUTZ
+Dieses Paket enthält WLAN-Zugangsdaten in Druckmodell und QR-Code.
+Persönliche Druckdateien nicht öffentlich teilen.
+`;
+
 $('download').addEventListener('click',async()=>{const btn=$('download');btn.disabled=true;$('status').textContent='Erzeuge QR, 3D-Geometrie und Druckdateien lokal …';$('error').hidden=true;try{
  const c=configuration();validate(c);const mat=qrMatrix(c),base=bases();const meshes={panel:base.panel,stand:base.stand,blue:base.blue,black:joinMeshes(qrMesh(mat),lettersMesh(c))};
  const three=await mk3mf(meshes);const qrpng=await qrcodePNG(c);const zip=new JSZip();zip.file('WLAN_Aufsteller_Persoenlich.3mf',three);zip.file('WLAN_QR.png',qrpng);zip.file('WLAN_QR_Inhalt.txt',wifiText(c));zip.file('NFC_WLAN_WSC.ndef',ndefWSC(c));zip.file('NFC_NTAG215_Schreibbefehle.txt',ntagCommands(c));zip.file('Druckanleitung.txt',howto(c));
  const fld=zip.folder('STL_Einzelteile');for(const [name,mesh] of Object.entries(meshes))fld.file(name+'.stl',meshStl(mesh,name));
- const archive=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}});downloadBlob(archive,'Custom_WiFi_NFC_Stand_Persoenlich.zip');$('status').textContent='Fertig! Dein Druckpaket wurde lokal erstellt. Erst im Slicer kontrollieren.';
+ const archive=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:5}});downloadBlob(archive,'Custom_WiFi_NFC_Stand_Persoenlich.zip');$('status').textContent='Druckpaket erstellt. Vor dem Drucken im Slicer prüfen.';
  }catch(e){showError(e)}finally{btn.disabled=false}});
 update();
