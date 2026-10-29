@@ -26,7 +26,7 @@ Die ausführlichen Druckempfehlungen stehen unter [Druckanleitung](docs/DRUCKANL
 
 ## Modellgeometrie
 
-Texte und QR-Code werden beim Export als geschlossene 3D-Körper mit gemeinsamen Kanten erzeugt. Vor dem Drucken die Druckdatei im Slicer prüfen.
+Texte und QR-Code werden als geschlossene 3D-Körper aus zusammenhängenden Flächen erzeugt. Die Druckgeometrie vor dem Drucken im Slicer prüfen.
 
 ## Modelldaten
 

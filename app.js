@@ -39,59 +39,76 @@ function readSTL64(b64){let s=atob(b64),buffer=new ArrayBuffer(s.length),u=new U
 const baseMeshes={};
 function bases(){if(!baseMeshes.panel)for(const name of ['panel','stand','blue'])baseMeshes[name]=readSTL64(window.STAND_MODEL_STL[name]);return baseMeshes}
 function emptyMesh(){return {v:[],f:[]}}
-// Generate *closed* solid letter/QR meshes from raster masks.
-// Top and bottom tessellation share exactly the same grid as the perimeter walls.
-// Unlike separate raster-row prisms, there are no air gaps between text strokes.
+// Build solid surfaces as horizontal continuous contours, not as individual
+// mini-cubes or pixel columns. Conforming edge subdivisions make the cap
+// and boundary sides one watertight connected mesh per printed island.
 function rasterSolid(mask, w, h, xLeft, yBottom, step, z0=3.99, z1=4.60){
- const mesh=emptyMesh(), sz=w*h;
- const components=new Int32Array(sz);components.fill(-1);
- const queue=new Int32Array(sz);
- let next=0;
- // Pixel islands must have their own vertices, even if they touch diagonally.
- // Otherwise touching corners can create non-manifold vertices in exported meshes.
- for(let i=0;i<sz;i++){
-  if(!mask[i]||components[i]>=0)continue;
-  let head=0,tail=1;queue[0]=i;components[i]=next;
-  while(head<tail){const v=queue[head++],x=v%w,y=(v/w)|0;
-   const nb=[x? v-1:-1,x+1<w?v+1:-1,y?v-w:-1,y+1<h?v+w:-1];
-   for(const j of nb)if(j>=0 && mask[j] && components[j]<0){components[j]=next;queue[tail++]=j}
+ const mesh=emptyMesh(), vmap=new Map(), rows=[];
+ function runs(y){
+  const out=[];if(y<0||y>=h)return out;
+  let x=0;while(x<w){
+   if(!mask[y*w+x]){x++;continue}
+   const a=x;while(x<w&&mask[y*w+x])x++;out.push([a,x]);
+  }return out;
+ }
+ for(let y=0;y<h;y++)rows.push(runs(y));
+ // Do not weld across diagonal point contacts (two unrelated islands).
+ const pinches=new Uint8Array((w+1)*(h+1));
+ for(let y=1;y<h;y++)for(let x=1;x<w;x++){
+  const nw=mask[(y-1)*w+x-1],ne=mask[(y-1)*w+x];
+  const sw=mask[y*w+x-1],se=mask[y*w+x];
+  if((nw&&se&&!ne&&!sw)||(ne&&sw&&!nw&&!se))pinches[y*(w+1)+x]=1;
+ }
+ let rid=0;
+ function vertex(x,y,z,owner){
+  const isolated=Number.isInteger(x)&&Number.isInteger(y)&&pinches[y*(w+1)+x];
+  const k=x+':'+y+':'+z+(isolated?':'+owner:'');
+  let id=vmap.get(k);
+  if(id===undefined){id=mesh.v.length;vmap.set(k,id);mesh.v.push([xLeft+x*step,yBottom+(h-y)*step,z===0?z0:z1]);}
+  return id;
+ }
+ function face(a,b,c){if(a!==b&&b!==c&&a!==c)mesh.f.push([a,b,c])}
+ function neighborCuts(x0,x1,neighbors){
+  const xs=[x0,x1];for(const [a,b] of neighbors){if(a>x0&&a<x1)xs.push(a);if(b>x0&&b<x1)xs.push(b);}
+  return [...new Set(xs)].sort((a,b)=>a-b);
+ }
+ function filled(x, neighbors){return neighbors.some(([a,b])=>x>=a&&x<b)}
+ for(let y=0;y<h;y++){
+  const below=rows[y+1]||[],above=rows[y-1]||[];
+  for(const [a,b] of rows[y]){
+   const owner=rid++;
+   // Image row y occupies grid Y from y to y+1, with reversed world Y.
+   // The south border is grid y+1, the north border is grid y.
+   const low=neighborCuts(a,b,below),high=neighborCuts(a,b,above);
+   let outline=[];
+   for(const x of low)outline.push([x,y+1]);
+   for(const x of high.slice().reverse())outline.push([x,y]);
+   // A single triangle fan forms each continuous top/bottom surface.
+   // This avoids hundreds of narrow coplanar strips through each glyph.
+   const midX=(a+b)/2,midY=y+0.5;
+   const cb=vertex(midX,midY,0,owner),ct=vertex(midX,midY,1,owner);
+   for(let k=0;k<outline.length;k++){
+    const [x1,y1]=outline[k],[x2,y2]=outline[(k+1)%outline.length];
+    const v1=vertex(x1,y1,1,owner),v2=vertex(x2,y2,1,owner);
+    // Outline is CCW in world coordinates (inverted image Y).
+    face(ct,v1,v2);
+    face(cb,vertex(x2,y2,0,owner),vertex(x1,y1,0,owner));
+   }
+   function wall(x1,y1,x2,y2){
+    const A=vertex(x1,y1,0,owner),B=vertex(x2,y2,0,owner),
+          C=vertex(x2,y2,1,owner),D=vertex(x1,y1,1,owner);
+    face(A,B,C);face(A,C,D);
+   }
+   // The top horizontal edge of each row run meets the row above.
+   for(let i=0;i<high.length-1;i++)if(!filled((high[i]+high[i+1])/2,above))
+    wall(high[i+1],y,high[i],y); // world north
+   // The bottom horizontal edge meets the row below.
+   for(let i=0;i<low.length-1;i++)if(!filled((low[i]+low[i+1])/2,below))
+    wall(low[i],y+1,low[i+1],y+1); // world south
+   wall(a,y,a,y+1); // world west
+   wall(b,y+1,b,y); // world east
   }
-  // Dismiss isolated antialiasing dots too small to survive typical FDM slicing.
-  if(tail<4)for(let k=0;k<tail;k++)mask[queue[k]]=0;
-  next++;
  }
- // A diagonal touch in a pixel grid is not a real edge connection.  Keep
- // separate corners for the diagonal cells, even if they connect elsewhere.
- const pinch=new Uint8Array((w+1)*(h+1));
- for(let gy=1;gy<h;gy++)for(let gx=1;gx<w;gx++){
-  const top=h-gy-1,bot=h-gy;
-  const nw=mask[top*w+gx-1],ne=mask[top*w+gx];
-  const sw=mask[bot*w+gx-1],se=mask[bot*w+gx];
-  if((nw&&se&&!ne&&!sw)||(ne&&sw&&!nw&&!se))pinch[gy*(w+1)+gx]=1;
- }
- const vmap=new Map();
- function vertex(cid,gx,gy,z,owner){
-  const isolated=pinch[gy*(w+1)+gx];
-  const key=cid+':'+gx+':'+gy+':'+z+(isolated?':'+owner:'');
-  let idx=vmap.get(key);
-  if(idx===undefined){idx=mesh.v.length;vmap.set(key,idx);mesh.v.push([xLeft+gx*step,yBottom+gy*step,z])}
-  return idx;
- }
- function tri(a,b,c){mesh.f.push([a,b,c])}
- for(let py=0;py<h;py++)for(let px=0;px<w;px++){
-  const i=py*w+px;if(!mask[i])continue;
-  const cid=components[i],gx=px,gy=h-py-1;
-  const a=vertex(cid,gx,gy,0,i),b=vertex(cid,gx+1,gy,0,i),c=vertex(cid,gx+1,gy+1,0,i),d=vertex(cid,gx,gy+1,0,i);
-  const A=vertex(cid,gx,gy,1,i),B=vertex(cid,gx+1,gy,1,i),C=vertex(cid,gx+1,gy+1,1,i),D=vertex(cid,gx,gy+1,1,i);
-  tri(A,B,C);tri(A,C,D);tri(a,c,b);tri(a,d,c);
-  if(py===h-1 || !mask[i+w]){tri(a,b,B);tri(a,B,A)} // south
-  if(px===w-1 || !mask[i+1]){tri(b,c,C);tri(b,C,B)} // east
-  if(py===0 || !mask[i-w]){tri(c,d,D);tri(c,D,C)} // north
-  if(px===0 || !mask[i-1]){tri(d,a,A);tri(d,A,D)} // west
- }
- // Align the top of each solid with the native 3MF base, while retaining
- // z-axis coordinates exactly at the same plane for neighboring pixels.
- for(const p of mesh.v)p[2]=p[2] ? z1:z0;
  return mesh;
 }
 function qrMesh(matrix){
