@@ -39,14 +39,85 @@ function readSTL64(b64){let s=atob(b64),buffer=new ArrayBuffer(s.length),u=new U
 const baseMeshes={};
 function bases(){if(!baseMeshes.panel)for(const name of ['panel','stand','blue'])baseMeshes[name]=readSTL64(window.STAND_MODEL_STL[name]);return baseMeshes}
 function emptyMesh(){return {v:[],f:[]}}
-function prism(mesh,x0,y0,x1,y1,z0=3.99,z1=4.60){if(x1-x0<.04||y1-y0<.04)return;let off=mesh.v.length;mesh.v.push([x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0],[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]);const quads=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];for(let q of quads){mesh.f.push([off+q[0],off+q[1],off+q[2]],[off+q[0],off+q[2],off+q[3]])}}
-function qrMesh(matrix){let mesh=emptyMesh(),n=matrix.length,scale=60/n;for(let row=0;row<n;row++){let col=0;while(col<n){if(!matrix[row][col]){col++;continue}let start=col;while(col<n&&matrix[row][col])col++;const x0=(start-n/2)*scale+.012,x1=(col-n/2)*scale-.012, y1=127+(n/2-row)*scale-.012,y0=y1-scale+.024;prism(mesh,x0,y0,x1,y1)}}return mesh}
-function lettersMesh(c){let m=emptyMesh(),T=captions[c.language],rows=[[T[0],169,9.4],[T[1],89,4.5],[c.ssid,80,8],[T[2],70,4.5],[c.security==='nopass'?'—':c.password,61,8]];
- const scale=5; // 0.2mm pixel raster; ~2500 narrow prisms = slicer friendly
- for(const [text,y,initialSize] of rows){const canvas=document.createElement('canvas');canvas.width=520;canvas.height=90;const ctx=canvas.getContext('2d',{willReadFrequently:true});let s=initialSize;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='black';ctx.font=`800 ${s*scale}px Arial, sans-serif`;while(ctx.measureText(text).width>495&&s>1){s*=.94;ctx.font=`800 ${s*scale}px Arial, sans-serif`}
- ctx.fillText(text,260,45);let pixels=ctx.getImageData(0,0,520,90).data;
- for(let py=0;py<90;py++){let px=0;while(px<520){let idx=(py*520+px)*4+3;if(pixels[idx]<135){px++;continue}let start=px;while(px<520&&pixels[(py*520+px)*4+3]>=135)px++;let x0=(start-260)/scale+.017,x1=(px-260)/scale-.017;let ytop=y+(45-py)/scale-.017;prism(m,x0,ytop-.166,x1,ytop)}}
- }return m}
+// Generate *closed* solid letter/QR meshes from raster masks.
+// Top and bottom tessellation share exactly the same grid as the perimeter walls.
+// Unlike separate raster-row prisms, there are no air gaps between text strokes.
+function rasterSolid(mask, w, h, xLeft, yBottom, step, z0=3.99, z1=4.60){
+ const mesh=emptyMesh(), sz=w*h;
+ const components=new Int32Array(sz);components.fill(-1);
+ const queue=new Int32Array(sz);
+ let next=0;
+ // Pixel islands must have their own vertices, even if they touch diagonally.
+ // Otherwise touching corners can create non-manifold vertices in exported meshes.
+ for(let i=0;i<sz;i++){
+  if(!mask[i]||components[i]>=0)continue;
+  let head=0,tail=1;queue[0]=i;components[i]=next;
+  while(head<tail){const v=queue[head++],x=v%w,y=(v/w)|0;
+   const nb=[x? v-1:-1,x+1<w?v+1:-1,y?v-w:-1,y+1<h?v+w:-1];
+   for(const j of nb)if(j>=0 && mask[j] && components[j]<0){components[j]=next;queue[tail++]=j}
+  }
+  // Dismiss isolated antialiasing dots too small to survive typical FDM slicing.
+  if(tail<4)for(let k=0;k<tail;k++)mask[queue[k]]=0;
+  next++;
+ }
+ // A diagonal touch in a pixel grid is not a real edge connection.  Keep
+ // separate corners for the diagonal cells, even if they connect elsewhere.
+ const pinch=new Uint8Array((w+1)*(h+1));
+ for(let gy=1;gy<h;gy++)for(let gx=1;gx<w;gx++){
+  const top=h-gy-1,bot=h-gy;
+  const nw=mask[top*w+gx-1],ne=mask[top*w+gx];
+  const sw=mask[bot*w+gx-1],se=mask[bot*w+gx];
+  if((nw&&se&&!ne&&!sw)||(ne&&sw&&!nw&&!se))pinch[gy*(w+1)+gx]=1;
+ }
+ const vmap=new Map();
+ function vertex(cid,gx,gy,z,owner){
+  const isolated=pinch[gy*(w+1)+gx];
+  const key=cid+':'+gx+':'+gy+':'+z+(isolated?':'+owner:'');
+  let idx=vmap.get(key);
+  if(idx===undefined){idx=mesh.v.length;vmap.set(key,idx);mesh.v.push([xLeft+gx*step,yBottom+gy*step,z])}
+  return idx;
+ }
+ function tri(a,b,c){mesh.f.push([a,b,c])}
+ for(let py=0;py<h;py++)for(let px=0;px<w;px++){
+  const i=py*w+px;if(!mask[i])continue;
+  const cid=components[i],gx=px,gy=h-py-1;
+  const a=vertex(cid,gx,gy,0,i),b=vertex(cid,gx+1,gy,0,i),c=vertex(cid,gx+1,gy+1,0,i),d=vertex(cid,gx,gy+1,0,i);
+  const A=vertex(cid,gx,gy,1,i),B=vertex(cid,gx+1,gy,1,i),C=vertex(cid,gx+1,gy+1,1,i),D=vertex(cid,gx,gy+1,1,i);
+  tri(A,B,C);tri(A,C,D);tri(a,c,b);tri(a,d,c);
+  if(py===h-1 || !mask[i+w]){tri(a,b,B);tri(a,B,A)} // south
+  if(px===w-1 || !mask[i+1]){tri(b,c,C);tri(b,C,B)} // east
+  if(py===0 || !mask[i-w]){tri(c,d,D);tri(c,D,C)} // north
+  if(px===0 || !mask[i-1]){tri(d,a,A);tri(d,A,D)} // west
+ }
+ // Align the top of each solid with the native 3MF base, while retaining
+ // z-axis coordinates exactly at the same plane for neighboring pixels.
+ for(const p of mesh.v)p[2]=p[2] ? z1:z0;
+ return mesh;
+}
+function qrMesh(matrix){
+ const n=matrix.length,mask=new Uint8Array(n*n);
+ for(let y=0;y<n;y++)for(let x=0;x<n;x++)mask[y*n+x]=matrix[y][x]?1:0;
+ const step=60/n;
+ return rasterSolid(mask,n,n,-30,127-30,step);
+}
+function lettersMesh(c){
+ let all=emptyMesh(),T=captions[c.language];
+ const rows=[[T[0],169,9.4],[T[1],89,4.5],[c.ssid,80,8],[T[2],70,4.5],[c.security==='nopass'?'—':c.password,61,8]];
+ const scale=5,w=520,h=90; // 0.2 mm raster, no deliberate inter-row gaps
+ for(const [value,centerY,initialSize] of rows){
+  const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});let size=initialSize;
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';
+  ctx.font=`800 ${size*scale}px Arial, sans-serif`;
+  while(ctx.measureText(value).width>495&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
+  ctx.fillText(value,w/2,h/2);
+  const image=ctx.getImageData(0,0,w,h).data,mask=new Uint8Array(w*h);
+  for(let i=0;i<mask.length;i++)mask[i]=image[i*4+3]>=135?1:0;
+  const m=rasterSolid(mask,w,h,-w/(2*scale),centerY-h/(2*scale),1/scale);
+  all=joinMeshes(all,m);
+ }
+ return all;
+}
 function joinMeshes(a,b){let off=a.v.length;return {v:a.v.concat(b.v),f:a.f.concat(b.f.map(tri=>tri.map(i=>i+off)))}}
 const xmlEscape=s=>String(s).replace(/[&<>"']/g,t=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[t]));
 function mk3mf(meshes){let str=['<?xml version="1.0" encoding="UTF-8"?>','<model unit="millimeter" xml:lang="de-DE" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">','<resources><basematerials id="1"><base name="Weiss" displaycolor="#F8F9FC"/><base name="Schwarz" displaycolor="#141B2A"/><base name="Blau" displaycolor="#2567CA"/></basematerials>'];

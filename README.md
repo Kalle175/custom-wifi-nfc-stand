@@ -24,6 +24,10 @@ Die Modelle lassen sich in gängigen Slicern vorbereiten. Das Grunddesign besteh
 
 Die ausführlichen Druckempfehlungen stehen unter [Druckanleitung](docs/DRUCKANLEITUNG.md).
 
+## Modellgeometrie
+
+Texte und QR-Code werden beim Export als geschlossene 3D-Körper mit gemeinsamen Kanten erzeugt. Vor dem Drucken die Druckdatei im Slicer prüfen.
+
 ## Modelldaten
 
 | Eigenschaft | Wert |
