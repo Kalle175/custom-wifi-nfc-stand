@@ -120,13 +120,13 @@ function qrMesh(matrix){
 function lettersMesh(c){
  let all=emptyMesh(),T=captions[c.language];
  const rows=[[T[0],169,9.4],[T[1],89,4.5],[c.ssid,80,8],[T[2],70,4.5],[c.security==='nopass'?'—':c.password,61,8]];
- const scale=5,w=520,h=90; // 0.2 mm raster, no deliberate inter-row gaps
+ const scale=10,w=1040,h=180; // 0.1 mm raster, original v1.2 look preserved
  for(const [value,centerY,initialSize] of rows){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});let size=initialSize;
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';
   ctx.font=`800 ${size*scale}px Arial, sans-serif`;
-  while(ctx.measureText(value).width>495&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
+  while(ctx.measureText(value).width>990&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
   ctx.fillText(value,w/2,h/2);
   const image=ctx.getImageData(0,0,w,h).data,mask=new Uint8Array(w*h);
   for(let i=0;i<mask.length;i++)mask[i]=image[i*4+3]>=135?1:0;
