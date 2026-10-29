@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light"><title>Custom WiFi NFC Stand — Konfigurator</title>
+<meta name="description" content="Erstelle einen personalisierten dreifarbigen WLAN-Aufsteller mit scannbarem QR-Code und versteckter NFC-Tasche. Privat, offline und direkt als 3MF."/>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap top-inner"><div class="brand"><span class="brand-mark">⌁</span><span>Custom WiFi <b>NFC Stand</b></span></div><span class="offline"><span class="green-dot"></span> 100 % lokal · kein Upload</span></div></header>
+<main class="wrap">
+<div class="intro"><div class="eyebrow">OPEN MAKER PROJECT · V1.0</div><h1>Dein WLAN. <em>Dein Design.</em></h1><p>Ein moderner, dreifarbiger WLAN-Aufsteller mit funktionierendem QR-Code, sichtbaren Zugangsdaten und verstecktem NFC-Tag. Konfigurieren, 3MF herunterladen, drucken.</p></div>
+<div class="layout"><section class="pane setup"><div class="sectionhead"><span class="step">01</span><div><h2>WLAN-Zugang</h2><p>Die Angaben werden nur in deinem Browser verarbeitet.</p></div></div>
+<div class="field"><label for="ssid">WLAN-Name <span>SSID</span></label><input id="ssid" maxlength="32" placeholder="z. B. Mein Gastnetz" value="GASTNETZ-DEMO" autocomplete="off" spellcheck="false"><small id="ssidhelp">Bis zu 32 Byte im WLAN-Namen.</small></div>
+<div class="field"><label for="password">Passwort <span>Steht später sichtbar auf dem Schild</span></label><div class="password-wrap"><input id="password" type="password" value="Demo1234567" autocomplete="off" spellcheck="false"><button type="button" id="togglePW" class="small-btn">Anzeigen</button></div></div>
+<div class="half"><div class="field"><label for="security">WLAN-Sicherheit</label><select id="security"><option value="WPA">WPA2 / WPA3 Personal</option><option value="nopass">Offenes WLAN</option></select></div><div class="field"><label for="language">Sprache</label><select id="language"><option value="de">Deutsch</option><option value="en">English</option><option value="fr">Français</option><option value="es">Español</option></select></div></div>
+<div class="field inline"><label><input id="hidden" type="checkbox"> Verstecktes WLAN (SSID nicht sichtbar)</label></div>
+<div class="rule"></div>
+<div class="sectionhead"><span class="step">02</span><div><h2>3D-Aufsteller</h2><p>Das bewährte Grundmodell bleibt unverändert.</p></div></div>
+<div class="specs"><div><strong>116 × 181 mm</strong><span>Fronttafel</span></div><div><strong>15°</strong><span>Neigung</span></div><div><strong>Ø 26 mm</strong><span>NFC-Tasche</span></div><div><strong>3 Farben</strong><span>Weiß · Schwarz · Blau</span></div></div>
+<div class="notice"><b>NFC-Druckpause</b><p>Bei 0,20 mm Schichthöhe: <strong>nach Z = 3,2 mm</strong> pausieren, 25-mm-Tag einlegen und weiterdrucken. Pause und Schichtvorschau selbst im Slicer prüfen.</p></div>
+<div id="error" class="error" role="alert" hidden></div>
+<button id="download" class="primary">⬇ &nbsp;Druckpaket erstellen <span>3MF + STL + QR + NFC</span></button>
+<div class="actions"><button id="saveQR" class="secondary">QR-Code als PNG</button><button id="copyNFC" class="secondary">NTAG215-Schreibbefehle kopieren</button></div>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+</section>
+<section class="pane right"><div class="sectionhead"><span class="step">03</span><div><h2>Live-Vorschau</h2><p>So wird die Vorderseite des Schildes aufgebaut.</p></div></div>
+<div class="preview-stage"><div class="poster"><div class="poster-head" id="prevTitle">GÄSTE-WLAN</div><div class="preview-qr" id="qrPreview" aria-label="WLAN-QR-Code"></div><div class="poster-caption" id="prevNetwork">NETZWERK</div><div class="poster-value" id="prevSsid">GASTNETZ-DEMO</div><div class="poster-caption" id="prevPassword">PASSWORT</div><div class="poster-value" id="prevPass">Demo1234567</div><div class="nfc-frame"><svg viewBox="0 0 90 65" width="88" height="64" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="13" y="8" width="30" height="49" rx="6"/><path d="M24 51h8M55 22c8 6 8 16 0 22M63 14c15 12 15 27 0 38"/></svg></div></div><div class="poster-base"></div></div>
+<div class="tip"><strong>Privatsphäre zuerst.</strong> Der QR-Code und das gedruckte Schild enthalten das WLAN-Passwort. Lade niemals dein persönliches Druckpaket auf Nexprint hoch. Verwende dafür die beiliegende Demo.</div>
+<div class="minihelp"><h3>So funktioniert NFC</h3><p>Die ZIP enthält WLAN-NFC-Daten als <code>.ndef</code> sowie die passenden Schreibbefehle <code>A2:...</code> für NTAG215 und NFC Tools. Bei manchen Android-Geräten kann ein WLAN-NFC-Tag eine Verbindung anbieten. iPhones verbinden sich über den QR-Code – nicht automatisch durch normales WLAN-NFC.</p></div></section></div>
+<footer>Freier Web-Code (MIT) · 3D-Modell nur nicht-kommerziell (CC BY-NC 4.0) · Keine Cookies, keine Analytics, keine Serverübertragung · <a href="README.md" target="_blank" rel="noopener">Druck- und Veröffentlichungsanleitung</a> · <a href="LICENSE-MODELS.md" target="_blank" rel="noopener">Modell-Lizenz</a></footer>
+</main>
+<script src="vendor/jszip.min.js"></script><script src="vendor/qrcode.js"></script><script src="model-data.js"></script><script src="app.js"></script>
+</body></html>
