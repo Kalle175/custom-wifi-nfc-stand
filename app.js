@@ -39,55 +39,75 @@ function readSTL64(b64){let s=atob(b64),buffer=new ArrayBuffer(s.length),u=new U
 const baseMeshes={};
 function bases(){if(!baseMeshes.panel)for(const name of ['panel','stand','blue'])baseMeshes[name]=readSTL64(window.STAND_MODEL_STL[name]);return baseMeshes}
 function emptyMesh(){return {v:[],f:[]}}
-// Each filled bitmap cell becomes a non-overlapping watertight prism top.
-// Cap faces use local triangles (never long triangle fans). Adjacent pixels
-// share vertices; only the exposed boundary receives side walls. At pixels
-// that touch diagonally, keep vertex identities separate to avoid pinches.
-function rasterSolid(mask,w,h,xLeft,yBottom,step,z0=3.99,z1=4.60){
- const mesh=emptyMesh(),vmap=new Map();
- const filled=(x,y)=>x>=0&&y>=0&&x<w&&y<h&&mask[y*w+x]!==0;
+// Build solid surfaces as horizontal continuous contours, not as individual
+// mini-cubes or pixel columns. Conforming edge subdivisions make the cap
+// and boundary sides one watertight connected mesh per printed island.
+function rasterSolid(mask, w, h, xLeft, yBottom, step, z0=3.99, z1=4.60){
+ const mesh=emptyMesh(), vmap=new Map(), rows=[];
+ function runs(y){
+  const out=[];if(y<0||y>=h)return out;
+  let x=0;while(x<w){
+   if(!mask[y*w+x]){x++;continue}
+   const a=x;while(x<w&&mask[y*w+x])x++;out.push([a,x]);
+  }return out;
+ }
+ for(let y=0;y<h;y++)rows.push(runs(y));
+ // Do not weld across diagonal point contacts (two unrelated islands).
  const pinches=new Uint8Array((w+1)*(h+1));
  for(let y=1;y<h;y++)for(let x=1;x<w;x++){
-  const nw=filled(x-1,y-1),ne=filled(x,y-1),sw=filled(x-1,y),se=filled(x,y);
+  const nw=mask[(y-1)*w+x-1],ne=mask[(y-1)*w+x];
+  const sw=mask[y*w+x-1],se=mask[y*w+x];
   if((nw&&se&&!ne&&!sw)||(ne&&sw&&!nw&&!se))pinches[y*(w+1)+x]=1;
  }
+ let rid=0;
  function vertex(x,y,z,owner){
-  const tag=pinches[y*(w+1)+x]? ':'+owner:'';
-  const key=x+':'+y+':'+z+tag;
-  let id=vmap.get(key);
-  if(id===undefined){
-   id=mesh.v.length;vmap.set(key,id);
-   let px=x,py=y;
-   if(pinches[y*(w+1)+x]){
-    // Break diagonal-only point contacts by a sub-print-resolution gap.
-    // A coincident corner otherwise becomes non-manifold after importer welding.
-    const d=Math.min(0.003,step*0.05)/step;
-    const ox=owner%w,oy=Math.floor(owner/w);
-    px+=(x===ox?d:-d);py+=(y===oy?d:-d);
-   }
-   mesh.v.push([xLeft+px*step,yBottom+(h-py)*step,z?z1:z0]);
-  }
+  const isolated=Number.isInteger(x)&&Number.isInteger(y)&&pinches[y*(w+1)+x];
+  const k=x+':'+y+':'+z+(isolated?':'+owner:'');
+  let id=vmap.get(k);
+  if(id===undefined){id=mesh.v.length;vmap.set(k,id);mesh.v.push([xLeft+x*step,yBottom+(h-y)*step,z===0?z0:z1]);}
   return id;
  }
- function side(p,q,owner){
-  const a=vertex(p[0],p[1],0,owner),b=vertex(q[0],q[1],0,owner);
-  const c=vertex(q[0],q[1],1,owner),d=vertex(p[0],p[1],1,owner);
-  mesh.f.push([a,b,c],[a,c,d]);
+ function face(a,b,c){if(a!==b&&b!==c&&a!==c)mesh.f.push([a,b,c])}
+ function neighborCuts(x0,x1,neighbors){
+  const xs=[x0,x1];for(const [a,b] of neighbors){if(a>x0&&a<x1)xs.push(a);if(b>x0&&b<x1)xs.push(b);}
+  return [...new Set(xs)].sort((a,b)=>a-b);
  }
- for(let y=0;y<h;y++)for(let x=0;x<w;x++)if(filled(x,y)){
-  const owner=y*w+x;
-  // Square corners ordered counter-clockwise in world coordinates.
-  const bl=[x,y+1],br=[x+1,y+1],tr=[x+1,y],tl=[x,y];
-  const A=vertex(...bl,1,owner),B=vertex(...br,1,owner);
-  const C=vertex(...tr,1,owner),D=vertex(...tl,1,owner);
-  const E=vertex(...bl,0,owner),F=vertex(...br,0,owner);
-  const G=vertex(...tr,0,owner),H=vertex(...tl,0,owner);
-  mesh.f.push([A,B,C],[A,C,D]);  // top
-  mesh.f.push([E,G,F],[E,H,G]);  // bottom
-  if(!filled(x,y+1))side(bl,br,owner);
-  if(!filled(x+1,y))side(br,tr,owner);
-  if(!filled(x,y-1))side(tr,tl,owner);
-  if(!filled(x-1,y))side(tl,bl,owner);
+ function filled(x, neighbors){return neighbors.some(([a,b])=>x>=a&&x<b)}
+ for(let y=0;y<h;y++){
+  const below=rows[y+1]||[],above=rows[y-1]||[];
+  for(const [a,b] of rows[y]){
+   const owner=rid++;
+   // Image row y occupies grid Y from y to y+1, with reversed world Y.
+   // The south border is grid y+1, the north border is grid y.
+   const low=neighborCuts(a,b,below),high=neighborCuts(a,b,above);
+   let outline=[];
+   for(const x of low)outline.push([x,y+1]);
+   for(const x of high.slice().reverse())outline.push([x,y]);
+   // A single triangle fan forms each continuous top/bottom surface.
+   // This avoids hundreds of narrow coplanar strips through each glyph.
+   const midX=(a+b)/2,midY=y+0.5;
+   const cb=vertex(midX,midY,0,owner),ct=vertex(midX,midY,1,owner);
+   for(let k=0;k<outline.length;k++){
+    const [x1,y1]=outline[k],[x2,y2]=outline[(k+1)%outline.length];
+    const v1=vertex(x1,y1,1,owner),v2=vertex(x2,y2,1,owner);
+    // Outline is CCW in world coordinates (inverted image Y).
+    face(ct,v1,v2);
+    face(cb,vertex(x2,y2,0,owner),vertex(x1,y1,0,owner));
+   }
+   function wall(x1,y1,x2,y2){
+    const A=vertex(x1,y1,0,owner),B=vertex(x2,y2,0,owner),
+          C=vertex(x2,y2,1,owner),D=vertex(x1,y1,1,owner);
+    face(A,B,C);face(A,C,D);
+   }
+   // The top horizontal edge of each row run meets the row above.
+   for(let i=0;i<high.length-1;i++)if(!filled((high[i]+high[i+1])/2,above))
+    wall(high[i+1],y,high[i],y); // world north
+   // The bottom horizontal edge meets the row below.
+   for(let i=0;i<low.length-1;i++)if(!filled((low[i]+low[i+1])/2,below))
+    wall(low[i],y+1,low[i+1],y+1); // world south
+   wall(a,y,a,y+1); // world west
+   wall(b,y+1,b,y); // world east
+  }
  }
  return mesh;
 }
@@ -100,13 +120,13 @@ function qrMesh(matrix){
 function lettersMesh(c){
  let all=emptyMesh(),T=captions[c.language];
  const rows=[[T[0],169,9.4],[T[1],89,4.5],[c.ssid,80,8],[T[2],70,4.5],[c.security==='nopass'?'—':c.password,61,8]];
- const scale=10,w=1040,h=180; // 0.10 mm Schrift-Raster, gleicher physischer Textraum
+ const scale=5,w=520,h=90; // 0.2 mm raster, no deliberate inter-row gaps
  for(const [value,centerY,initialSize] of rows){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});let size=initialSize;
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';
   ctx.font=`800 ${size*scale}px Arial, sans-serif`;
-  while(ctx.measureText(value).width>990&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
+  while(ctx.measureText(value).width>495&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
   ctx.fillText(value,w/2,h/2);
   const image=ctx.getImageData(0,0,w,h).data,mask=new Uint8Array(w*h);
   for(let i=0;i<mask.length;i++)mask[i]=image[i*4+3]>=135?1:0;
