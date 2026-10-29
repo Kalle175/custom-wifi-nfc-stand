@@ -117,20 +117,160 @@ function qrMesh(matrix){
  const step=60/n;
  return rasterSolid(mask,n,n,-30,127-30,step);
 }
+function simplifyLoop(points){
+ const out=[];
+ for(let i=0;i<points.length;i++){
+  const a=points[(i-1+points.length)%points.length],b=points[i],c=points[(i+1)%points.length];
+  const dx1=b[0]-a[0],dy1=b[1]-a[1],dx2=c[0]-b[0],dy2=c[1]-b[1];
+  if(dx1*dy2-dy1*dx2===0)continue;
+  out.push(b);
+ }
+ return out;
+}
+function polygonArea(points){let a=0;for(let i=0;i<points.length;i++){const p=points[i],q=points[(i+1)%points.length];a+=p[0]*q[1]-q[0]*p[1]}return a/2}
+function pointInPolygon(point,poly){
+ const x=point[0],y=point[1];let inside=false;
+ for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+  const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+  const intersect=((yi>y)!==(yj>y))&&(x < (xj-xi)*(y-yi)/((yj-yi)||1e-9)+xi);
+  if(intersect)inside=!inside;
+ }
+ return inside;
+}
+function traceMaskLoops(mask,w,h){
+ const next=new Map();
+ const addEdge=(x1,y1,x2,y2)=>{const k=x1+','+y1;if(!next.has(k))next.set(k,[]);next.get(k).push([x2,y2]);};
+ const filled=(x,y)=>x>=0&&x<w&&y>=0&&y<h&&mask[y*w+x];
+ for(let iy=0;iy<h;iy++){
+  const gy=h-1-iy;
+  for(let x=0;x<w;x++)if(mask[iy*w+x]){
+   if(!filled(x,iy+1))addEdge(x,gy,x+1,gy);          // south
+   if(!filled(x+1,iy))addEdge(x+1,gy,x+1,gy+1);      // east
+   if(!filled(x,iy-1))addEdge(x+1,gy+1,x,gy+1);      // north
+   if(!filled(x-1,iy))addEdge(x,gy+1,x,gy);          // west
+  }
+ }
+ const visited=new Set(),loops=[];
+ for(const [start,list] of next.entries())for(const end of list){
+  const key=start+'>'+end[0]+','+end[1];
+  if(visited.has(key))continue;
+  const loop=[];let curStart=start,curEnd=end;
+  while(true){
+   const skey=curStart+'>'+curEnd[0]+','+curEnd[1];
+   if(visited.has(skey))break;
+   visited.add(skey);
+   const [sx,sy]=curStart.split(',').map(Number);
+   loop.push([sx,sy]);
+   const nk=curEnd[0]+','+curEnd[1],outs=next.get(nk)||[];
+   let chosen=null;
+   for(const cand of outs){const ckey=nk+'>'+cand[0]+','+cand[1];if(!visited.has(ckey)){chosen=cand;break;}}
+   if(!chosen)break;
+   curStart=nk;curEnd=chosen;
+   if(curStart===start && curEnd[0]===end[0] && curEnd[1]===end[1])break;
+  }
+  if(loop.length>=3)loops.push(simplifyLoop(loop));
+ }
+ return loops;
+}
+function loopSideWalls(loop,xOrigin,yOrigin,step,z0,z1){
+ const mesh=emptyMesh(),vmap=new Map();
+ const v=(p,z)=>{const k=p[0]+','+p[1]+','+z;let id=vmap.get(k);if(id===undefined){id=mesh.v.length;vmap.set(k,id);mesh.v.push([xOrigin+p[0]*step,yOrigin+p[1]*step,z?z1:z0]);}return id;};
+ const area=polygonArea(loop),ccw=area>0;
+ for(let i=0;i<loop.length;i++){
+  const a=loop[i],b=loop[(i+1)%loop.length];
+  const A=v(a,0),B=v(b,0),C=v(b,1),D=v(a,1);
+  if(ccw){mesh.f.push([A,B,C],[A,C,D]);}else{mesh.f.push([A,C,B],[A,D,C]);}
+ }
+ return mesh;
+}
+function bridgeHole(outer,hole){
+ let hi=0;for(let i=1;i<hole.length;i++){const p=hole[i],q=hole[hi];if(p[0]>q[0]||(p[0]===q[0]&&p[1]<q[1]))hi=i;}
+ const hp=hole[hi];
+ let bestX=Infinity,oi=0;
+ for(let i=0;i<outer.length;i++){
+  const a=outer[i],b=outer[(i+1)%outer.length];
+  if((a[1]<=hp[1]&&b[1]>hp[1])||(b[1]<=hp[1]&&a[1]>hp[1])){
+   const x=a[0]+(hp[1]-a[1])*(b[0]-a[0])/(b[1]-a[1]);
+   if(x>=hp[0]&&x<bestX){
+    bestX=x;
+    if(a[0]===b[0]) oi=(Math.abs(a[1]-hp[1])<Math.abs(b[1]-hp[1])?i:(i+1)%outer.length);
+    else oi=(a[0]>b[0]?i:(i+1)%outer.length);
+   }
+  }
+ }
+ const seq=[];
+ for(let i=0;i<=oi;i++)seq.push(outer[i]);
+ seq.push(hp);
+ for(let k=1;k<hole.length;k++)seq.push(hole[(hi+k)%hole.length]);
+ seq.push(hp);
+ seq.push(outer[oi]);
+ for(let i=oi+1;i<outer.length;i++)seq.push(outer[i]);
+ const cleaned=[];
+ for(const p of seq){const q=cleaned[cleaned.length-1];if(!q||q[0]!==p[0]||q[1]!==p[1])cleaned.push(p)}
+ return cleaned;
+}
+function triangulateSimplePolygon(points){
+ const pts=points.slice();
+ if(pts.length<3)return [];
+ if(polygonArea(pts)<0)pts.reverse();
+ const n=pts.length,idx=[...Array(n).keys()],tris=[];
+ const area2=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+ const inTri=(p,a,b,c)=>{
+  const a1=area2(a,b,p),a2=area2(b,c,p),a3=area2(c,a,p);
+  return a1>=0&&a2>=0&&a3>=0;
+ };
+ let guard=0;
+ while(idx.length>3&&guard<50000){
+  let ear=false;guard++;
+  for(let ii=0;ii<idx.length;ii++){
+   const ia=idx[(ii-1+idx.length)%idx.length],ib=idx[ii],ic=idx[(ii+1)%idx.length];
+   const a=pts[ia],b=pts[ib],c=pts[ic];
+   if(area2(a,b,c)<=1e-9)continue;
+   let contains=false;
+   for(const id of idx){if(id===ia||id===ib||id===ic)continue;const p=pts[id];if(inTri(p,a,b,c)){contains=true;break;}}
+   if(contains)continue;
+   tris.push([ia,ib,ic]);idx.splice(ii,1);ear=true;break;
+  }
+  if(!ear)break;
+ }
+ if(idx.length===3)tris.push([idx[0],idx[1],idx[2]]);
+ return {points:pts,triangles:tris};
+}
+function vectorTextMesh(mask,w,h,xOrigin,yOrigin,step,z0=3.99,z1=4.60){
+ const loops=traceMaskLoops(mask,w,h).filter(loop=>Math.abs(polygonArea(loop))>1e-6);
+ const outers=[],holes=[];
+ for(const loop of loops){(polygonArea(loop)>0?outers:holes).push(loop)}
+ const mesh=emptyMesh();
+ for(const outer0 of outers){
+  let outer=outer0.slice();
+  const myHoles=[];
+  for(const hole of holes){if(pointInPolygon(hole[0],outer0))myHoles.push(hole)}
+  for(const hole of myHoles)outer=bridgeHole(outer,hole);
+  const tri=triangulateSimplePolygon(outer);
+  const vmap=new Map();
+  const v=(p,z)=>{const k=p[0]+','+p[1]+','+z;let id=vmap.get(k);if(id===undefined){id=mesh.v.length;vmap.set(k,id);mesh.v.push([xOrigin+p[0]*step,yOrigin+p[1]*step,z?z1:z0]);}return id;};
+  for(const [a,b,c] of tri.triangles){mesh.f.push([v(tri.points[a],1),v(tri.points[b],1),v(tri.points[c],1)]);mesh.f.push([v(tri.points[c],0),v(tri.points[b],0),v(tri.points[a],0)]);}
+  mesh.v=mesh.v; // keep mesh reference explicit
+  const sideLoops=[outer0,...myHoles];
+  for(const loop of sideLoops){const side=loopSideWalls(loop,xOrigin,yOrigin,step,z0,z1);const off=mesh.v.length;mesh.v.push(...side.v);mesh.f.push(...side.f.map(t=>t.map(i=>i+off)));}
+ }
+ return mesh;
+}
 function lettersMesh(c){
  let all=emptyMesh(),T=captions[c.language];
  const rows=[[T[0],169,9.4],[T[1],89,4.5],[c.ssid,80,8],[T[2],70,4.5],[c.security==='nopass'?'—':c.password,61,8]];
- const scale=5,w=520,h=90; // 0.2 mm raster, no deliberate inter-row gaps
+ const scale=14,w=1456,h=252; // high-resolution vectorized contour tracing for smoother glyphs
  for(const [value,centerY,initialSize] of rows){
   const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
   const ctx=canvas.getContext('2d',{willReadFrequently:true});let size=initialSize;
+  ctx.clearRect(0,0,w,h);
   ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';
   ctx.font=`800 ${size*scale}px Arial, sans-serif`;
-  while(ctx.measureText(value).width>495&&size>1){size*=.94;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
+  while(ctx.measureText(value).width>w-70&&size>1){size*=.96;ctx.font=`800 ${size*scale}px Arial, sans-serif`}
   ctx.fillText(value,w/2,h/2);
   const image=ctx.getImageData(0,0,w,h).data,mask=new Uint8Array(w*h);
-  for(let i=0;i<mask.length;i++)mask[i]=image[i*4+3]>=135?1:0;
-  const m=rasterSolid(mask,w,h,-w/(2*scale),centerY-h/(2*scale),1/scale);
+  for(let i=0;i<mask.length;i++)mask[i]=image[i*4+3]>=100?1:0;
+  const m=vectorTextMesh(mask,w,h,-w/(2*scale),centerY-h/(2*scale),1/scale);
   all=joinMeshes(all,m);
  }
  return all;

@@ -24,10 +24,6 @@ Die Modelle lassen sich in gängigen Slicern vorbereiten. Das Grunddesign besteh
 
 Die ausführlichen Druckempfehlungen stehen unter [Druckanleitung](docs/DRUCKANLEITUNG.md).
 
-## Modellgeometrie
-
-Texte und QR-Code werden als geschlossene 3D-Körper aus zusammenhängenden Flächen erzeugt. Die Druckgeometrie vor dem Drucken im Slicer prüfen.
-
 ## Modelldaten
 
 | Eigenschaft | Wert |
