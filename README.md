@@ -26,7 +26,7 @@ Die ausführlichen Druckempfehlungen stehen unter [Druckanleitung](docs/DRUCKANL
 
 ## Modellgeometrie
 
-Texte werden in einer XY-Auflösung von 0,10 mm als geschlossene 3D-Körper erzeugt. Der QR-Code bleibt als separates Mehrfarben-Element erhalten. Die Druckgeometrie vor dem Drucken im Slicer prüfen.
+Texte und QR-Code werden als geschlossene 3D-Körper aus zusammenhängenden Flächen erzeugt. Die Druckgeometrie vor dem Drucken im Slicer prüfen.
 
 ## Modelldaten
 
